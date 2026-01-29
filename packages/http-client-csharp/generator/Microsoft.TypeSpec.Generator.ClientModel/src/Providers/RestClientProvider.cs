@@ -23,8 +23,6 @@ namespace Microsoft.TypeSpec.Generator.ClientModel.Providers
     {
         private const string RepeatabilityRequestIdHeader = "Repeatability-Request-ID";
         private const string RepeatabilityFirstSentHeader = "Repeatability-First-Sent";
-        private const string MaxPageSizeParameterName = "maxpagesize";
-        private const string ApiVersionParameterName = "api-version";
 
         private static readonly Dictionary<string, ParameterProvider> _knownSpecialHeaderParams = new(StringComparer.OrdinalIgnoreCase)
         {
@@ -463,8 +461,10 @@ namespace Microsoft.TypeSpec.Generator.ClientModel.Providers
             }
 
             // Determine if we should update existing parameters or always append
+            InputPagingServiceMethod? pagingServiceMethod = _inputClient.Methods.OfType<InputPagingServiceMethod>()
+                .FirstOrDefault(m => m.Operation == operation);
             bool shouldUpdateExisting = isNextLinkRequest &&
-                                      ShouldUpdateReinjectedParameter(inputQueryParameter.SerializedName) &&
+                                      ShouldUpdateReinjectedParameter(inputQueryParameter, pagingServiceMethod) &&
                                       paramType?.IsCollection != true;
 
             MethodBodyStatement statement = shouldUpdateExisting
@@ -855,11 +855,25 @@ namespace Microsoft.TypeSpec.Generator.ClientModel.Providers
             return false;
         }
 
-        private static bool ShouldUpdateReinjectedParameter(string parameterName)
+        private static bool ShouldUpdateReinjectedParameter(InputParameter inputParameter, InputPagingServiceMethod? pagingServiceMethod)
         {
-            return parameterName.Equals(MaxPageSizeParameterName, StringComparison.OrdinalIgnoreCase) ||
-                   parameterName.Equals(ApiVersionParameterName, StringComparison.OrdinalIgnoreCase);
-            // In the future, we can extend this to check multiple parameters
+            // Check if this is an API version parameter
+            if (inputParameter.IsApiVersion)
+            {
+                return true;
+            }
+
+            // Check if this is a max page size parameter
+            if (pagingServiceMethod?.PagingMetadata.PageSizeParameterSegments?.Count > 0)
+            {
+                var pageSizeParameterName = pagingServiceMethod.PagingMetadata.PageSizeParameterSegments.Last();
+                if (inputParameter.Name.Equals(pageSizeParameterName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static List<int> GetSuccessStatusCodes(InputOperation operation)
